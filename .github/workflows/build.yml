@@ -1,0 +1,65 @@
+name: Windows Build Pipeline
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+
+jobs:
+  build:
+    runs-on: windows-latest
+    permissions:
+          contents: write
+
+    steps:
+      - name: Repository auschecken
+        uses: actions/checkout@v4
+
+      - name: Python installieren
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Abhängigkeiten installieren
+        shell: bash
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyinstaller
+          pip install -r requirements.txt  # Falls du eine requirements.txt hast
+
+      - name: Unterscheidung zwischen Branches
+        id: branch_check
+        shell: bash
+        run: |
+          if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+            echo "BRANCH=main" >> $GITHUB_ENV
+          else
+            echo "BRANCH=develop" >> $GITHUB_ENV
+          fi
+
+
+      - name: Build mit PyInstaller (für Test & Release)
+        shell: bash
+        run: |
+          if [[ "$BRANCH" == "main" ]]; then
+            pyinstaller --onefile --noconsole --name=release_build main.py
+          else
+            pyinstaller --onefile --noconsole --name=develop_build main.py
+          fi
+
+      - name: Artefakt speichern (unterschiedliche Namen je nach Branch)
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.BRANCH }}-Windows-Executable
+          path: dist/*.exe
+
+      - name: Release erstellen (nur für `main`)
+        if: github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/release_build.exe
+          tag_name: v1.0.${{ github.run_number }}
+          name: "Release v1.0.${{ github.run_number }}"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
